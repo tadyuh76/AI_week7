@@ -2,7 +2,7 @@
 5-Queens Problem Solver using SimpleAI Library
 Implements various CSP and Local Search algorithms:
 1. Backtracking with heuristics (MRV, LCV)
-2. Backtracking with AC3 constraint propagation
+2. Min-Conflicts constraint propagation
 3. Hill-Climbing
 4. Simulated Annealing
 5. Genetic Algorithm
@@ -10,7 +10,7 @@ Implements various CSP and Local Search algorithms:
 
 import random
 import time
-from simpleai.search import CspProblem, backtrack
+from simpleai.search import CspProblem, backtrack, SearchProblem
 from simpleai.search.csp import MOST_CONSTRAINED_VARIABLE, LEAST_CONSTRAINING_VALUE, min_conflicts
 from simpleai.search.local import hill_climbing, simulated_annealing, genetic
 
@@ -30,8 +30,13 @@ class FiveQueensProblem:
             return
             
         board = [['.' for _ in range(5)] for _ in range(5)]
-        for col, row in assignment.items():
-            board[row][col] = 'Q'
+        
+        if isinstance(assignment, dict):
+            for col, row in assignment.items():
+                board[row][col] = 'Q'
+        elif isinstance(assignment, (list, tuple)):
+            for col, row in enumerate(assignment):
+                board[row][col] = 'Q'
         
         print("\nBoard:")
         for row in board:
@@ -41,7 +46,13 @@ class FiveQueensProblem:
     def conflicts(self, assignment):
         """Count the number of conflicts (attacking pairs)"""
         conflicts = 0
-        queens = list(assignment.items())
+        
+        if isinstance(assignment, dict):
+            queens = list(assignment.items())
+        elif isinstance(assignment, (list, tuple)):
+            queens = list(enumerate(assignment))
+        else:
+            return 0
         
         for i in range(len(queens)):
             for j in range(i + 1, len(queens)):
@@ -66,13 +77,16 @@ class FiveQueensCSP(CspProblem):
         variables = list(range(5))  # Queens 0, 1, 2, 3, 4
         domains = {i: list(range(5)) for i in range(5)}  # Each queen can be in any row
         
-        super().__init__(variables, domains, self.constraint_function)
+        # Create constraints for all pairs of variables
+        constraints = []
+        for i in range(5):
+            for j in range(i + 1, 5):
+                constraints.append(((i, j), self.constraint_function))
+        
+        super().__init__(variables, domains, constraints)
     
     def constraint_function(self, variables, values):
         """Check if two queens don't attack each other"""
-        if len(variables) != 2:
-            return True
-            
         col1, col2 = variables
         row1, row2 = values
         
@@ -80,22 +94,32 @@ class FiveQueensCSP(CspProblem):
         return row1 != row2 and abs(row1 - row2) != abs(col1 - col2)
 
 
-# Use built-in heuristics from simpleai
-# MOST_CONSTRAINED_VARIABLE and LEAST_CONSTRAINING_VALUE are already imported
-
-
 # 2. LOCAL SEARCH IMPLEMENTATIONS
-class QueensLocalSearch:
-    """Local search implementation for 5-Queens"""
+class QueensSearchProblem(SearchProblem):
+    """Search problem for local search algorithms"""
     
     def __init__(self):
-        self.board_size = 5
+        # Initial state: random placement of queens
+        initial_state = tuple(random.randint(0, 4) for _ in range(5))
+        super().__init__(initial_state)
     
-    def random_state(self):
-        """Generate a random state (one queen per column)"""
-        return tuple(random.randint(0, 4) for _ in range(5))
+    def actions(self, state):
+        """Get all possible actions (moving one queen to a different row)"""
+        actions = []
+        for col in range(5):
+            for new_row in range(5):
+                if new_row != state[col]:
+                    actions.append((col, new_row))
+        return actions
     
-    def evaluate(self, state):
+    def result(self, state, action):
+        """Apply action to state"""
+        col, new_row = action
+        new_state = list(state)
+        new_state[col] = new_row
+        return tuple(new_state)
+    
+    def value(self, state):
         """Evaluate state - negative conflicts (higher is better)"""
         conflicts = 0
         for i in range(5):
@@ -108,33 +132,43 @@ class QueensLocalSearch:
                     conflicts += 1
         return -conflicts  # Negative because we want to minimize conflicts
     
-    def get_neighbors(self, state):
-        """Get all neighbors by moving one queen to a different row"""
-        neighbors = []
-        state_list = list(state)
-        
-        for col in range(5):
-            for new_row in range(5):
-                if new_row != state[col]:
-                    neighbor = state_list.copy()
-                    neighbor[col] = new_row
-                    neighbors.append(tuple(neighbor))
-        
-        return neighbors
-    
-    def mutate(self, state):
-        """Mutate state for genetic algorithm"""
-        state_list = list(state)
-        col = random.randint(0, 4)
-        state_list[col] = random.randint(0, 4)
-        return tuple(state_list)
+    def generate_random_state(self):
+        """Generate a random state for genetic algorithm"""
+        return tuple(random.randint(0, 4) for _ in range(5))
     
     def crossover(self, state1, state2):
-        """Crossover for genetic algorithm"""
-        crossover_point = random.randint(1, 3)
-        child1 = state1[:crossover_point] + state2[crossover_point:]
-        child2 = state2[:crossover_point] + state1[crossover_point:]
-        return child1, child2
+        """Improved crossover for genetic algorithm"""
+        # Use multiple crossover points for better mixing
+        child = list(state1)
+        
+        # Randomly select positions to inherit from parent2
+        for i in range(5):
+            if random.random() < 0.5:  # 50% chance to take from parent2
+                child[i] = state2[i]
+        
+        return tuple(child)
+    
+    def mutate(self, state):
+        """Improved mutation for genetic algorithm"""
+        state_list = list(state)
+        
+        # Higher chance of mutation with intelligent selection
+        # Mutate 1-2 queens per mutation
+        num_mutations = random.randint(1, 2)
+        
+        for _ in range(num_mutations):
+            col = random.randint(0, 4)
+            # Avoid placing in the same row (slight bias toward better moves)
+            old_row = state_list[col]
+            new_row = random.randint(0, 4)
+            
+            # Try to avoid same row with some probability
+            if new_row == old_row and random.random() < 0.7:
+                new_row = (new_row + random.randint(1, 4)) % 5
+            
+            state_list[col] = new_row
+        
+        return tuple(state_list)
 
 
 def solve_backtracking_heuristics():
@@ -147,8 +181,7 @@ def solve_backtracking_heuristics():
     result = backtrack(
         problem,
         variable_heuristic=MOST_CONSTRAINED_VARIABLE,
-        value_heuristic=LEAST_CONSTRAINING_VALUE,
-        inference=False
+        value_heuristic=LEAST_CONSTRAINING_VALUE
     )
     
     end_time = time.time()
@@ -165,7 +198,7 @@ def solve_backtracking_heuristics():
 
 
 def solve_min_conflicts():
-    """Solve using Min-Conflicts algorithm (CSP constraint propagation alternative)"""
+    """Solve using Min-Conflicts algorithm"""
     print("=== MIN-CONFLICTS (CSP CONSTRAINT PROPAGATION) ===")
     
     problem = FiveQueensCSP()
@@ -190,7 +223,6 @@ def solve_hill_climbing():
     """Solve using Hill-Climbing"""
     print("=== HILL-CLIMBING ===")
     
-    searcher = QueensLocalSearch()
     start_time = time.time()
     
     # Try multiple random starts
@@ -198,27 +230,25 @@ def solve_hill_climbing():
     best_value = float('-inf')
     
     for _ in range(10):
-        initial_state = searcher.random_state()
-        result = hill_climbing(
-            initial_state,
-            searcher.get_neighbors,
-            searcher.evaluate
-        )
+        problem = QueensSearchProblem()
+        result = hill_climbing(problem, iterations_limit=1000)
         
-        value = searcher.evaluate(result.state)
-        if value > best_value:
-            best_value = value
-            best_result = result
+        if result and hasattr(result, 'state'):
+            value = problem.value(result.state)
+            if value > best_value:
+                best_value = value
+                best_result = result
     
     end_time = time.time()
     
-    if best_result:
+    if best_result and hasattr(best_result, 'state'):
         print(f"Best solution found in {end_time - start_time:.4f} seconds")
-        assignment = {i: best_result.state[i] for i in range(5)}
-        FiveQueensProblem().print_board(assignment)
-        conflicts = FiveQueensProblem().conflicts(assignment)
+        FiveQueensProblem().print_board(best_result.state)
+        conflicts = FiveQueensProblem().conflicts(best_result.state)
         print(f"Conflicts: {conflicts}")
         print(f"Evaluation score: {best_value}")
+    else:
+        print("No solution found")
     
     return best_result
 
@@ -227,72 +257,121 @@ def solve_simulated_annealing():
     """Solve using Simulated Annealing"""
     print("=== SIMULATED ANNEALING ===")
     
-    searcher = QueensLocalSearch()
+    problem = QueensSearchProblem()
     start_time = time.time()
     
-    initial_state = searcher.random_state()
-    
-    def temperature_function(time_step):
+    def temperature_schedule(time_step):
         return max(0.01, 100 * (0.95 ** time_step))
     
     result = simulated_annealing(
-        initial_state,
-        searcher.get_neighbors,
-        searcher.evaluate,
-        temperature_function,
+        problem,
+        schedule=temperature_schedule,
         iterations_limit=1000
     )
     
     end_time = time.time()
     
-    if result:
+    if result and hasattr(result, 'state'):
         print(f"Solution found in {end_time - start_time:.4f} seconds")
-        assignment = {i: result.state[i] for i in range(5)}
-        FiveQueensProblem().print_board(assignment)
-        conflicts = FiveQueensProblem().conflicts(assignment)
+        FiveQueensProblem().print_board(result.state)
+        conflicts = FiveQueensProblem().conflicts(result.state)
         print(f"Conflicts: {conflicts}")
-        print(f"Evaluation score: {searcher.evaluate(result.state)}")
+        print(f"Evaluation score: {problem.value(result.state)}")
+    else:
+        print("No solution found")
     
     return result
+
+
+def local_improve_solution(state):
+    """Apply local improvements to a genetic algorithm solution"""
+    current_state = list(state)
+    improved = True
+    
+    while improved:
+        improved = False
+        current_conflicts = FiveQueensProblem().conflicts(current_state)
+        
+        # Try moving each queen to a better position
+        for col in range(5):
+            original_row = current_state[col]
+            best_row = original_row
+            best_conflicts = current_conflicts
+            
+            # Try all possible rows for this column
+            for new_row in range(5):
+                if new_row != original_row:
+                    current_state[col] = new_row
+                    conflicts = FiveQueensProblem().conflicts(current_state)
+                    
+                    if conflicts < best_conflicts:
+                        best_conflicts = conflicts
+                        best_row = new_row
+            
+            # Keep the best position found
+            current_state[col] = best_row
+            if best_conflicts < current_conflicts:
+                improved = True
+                if best_conflicts == 0:  # Perfect solution found
+                    break
+    
+    return tuple(current_state)
 
 
 def solve_genetic_algorithm():
-    """Solve using Genetic Algorithm"""
-    print("=== GENETIC ALGORITHM ===")
+    """Solve using Hybrid Genetic Algorithm with Local Improvement"""
+    print("=== GENETIC ALGORITHM (HYBRID WITH LOCAL SEARCH) ===")
     
-    searcher = QueensLocalSearch()
     start_time = time.time()
     
-    # Generate initial population
-    population_size = 50
-    initial_population = [searcher.random_state() for _ in range(population_size)]
+    # Try multiple runs with different parameters
+    best_result = None
+    best_conflicts = float('inf')
     
-    def mutation_function(individual):
-        return searcher.mutate(individual)
-    
-    def crossover_function(parent1, parent2):
-        return searcher.crossover(parent1, parent2)
-    
-    result = genetic(
-        initial_population,
-        searcher.evaluate,
-        mutation_function,
-        crossover_function,
-        population_size=population_size,
-        iterations_limit=100
-    )
+    attempts = 3  # Reduced attempts since we're using local improvement
+    for attempt in range(attempts):
+        problem = QueensSearchProblem()
+        
+        # Vary parameters across attempts
+        population_size = 80 + (attempt * 40)   # 80, 120, 160
+        iterations = 150 + (attempt * 50)       # 150, 200, 250
+        
+        result = genetic(problem, population_size=population_size, iterations_limit=iterations)
+        
+        if result and hasattr(result, 'state'):
+            # Apply local improvement to the genetic result
+            improved_state = local_improve_solution(result.state)
+            conflicts = FiveQueensProblem().conflicts(improved_state)
+            
+            if conflicts < best_conflicts:
+                best_conflicts = conflicts
+                # Create a result-like object with improved state
+                class ImprovedResult:
+                    def __init__(self, state):
+                        self.state = state
+                best_result = ImprovedResult(improved_state)
+                
+                # If we found a perfect solution, stop early
+                if conflicts == 0:
+                    print(f"Perfect solution found on attempt {attempt + 1}")
+                    break
     
     end_time = time.time()
     
-    if result:
-        print(f"Solution found in {end_time - start_time:.4f} seconds")
-        assignment = {i: result.state[i] for i in range(5)}
-        FiveQueensProblem().print_board(assignment)
-        conflicts = FiveQueensProblem().conflicts(assignment)
-        print(f"Conflicts: {conflicts}")
-        print(f"Evaluation score: {searcher.evaluate(result.state)}")
+    if best_result and hasattr(best_result, 'state'):
+        print(f"Best solution found in {end_time - start_time:.4f} seconds")
+        FiveQueensProblem().print_board(best_result.state)
+        print(f"Conflicts: {best_conflicts}")
+        
+        if best_conflicts == 0:
+            print("✓ Perfect solution achieved!")
+            print("Algorithm: Genetic Algorithm + Local Search optimization")
+        else:
+            print(f"⚠ Partial solution with {best_conflicts} conflicts")
+    else:
+        print("No solution found")
     
-    return result
+    return best_result
 
 
 def show_menu():
@@ -304,7 +383,7 @@ def show_menu():
     print("2. Min-Conflicts (CSP Constraint Propagation)")
     print("3. Hill-Climbing Local Search")
     print("4. Simulated Annealing")
-    print("5. Genetic Algorithm")
+    print("5. Genetic Algorithm (Hybrid with Local Search)")
     print("6. Run All Algorithms and Compare")
     print("0. Exit")
     print("-" * 50)
@@ -354,7 +433,7 @@ def run_all_algorithms():
     for name, result in results.items():
         if result:
             if hasattr(result, 'state'):
-                assignment = {i: result.state[i] for i in range(5)}
+                assignment = result.state
             else:
                 assignment = result
             conflicts = FiveQueensProblem().conflicts(assignment)
