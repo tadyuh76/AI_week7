@@ -9,10 +9,12 @@ The 5-Queens problem is a variant of the famous N-Queens problem where you must 
 ## Implemented Algorithms
 
 ### CSP Algorithms
+
 1. **Backtracking with Heuristics** - Uses MRV (Most Constrained Variable) and LCV (Least Constraining Value) heuristics
 2. **Min-Conflicts** - CSP constraint propagation algorithm that efficiently resolves conflicts
 
 ### Local Search Algorithms
+
 3. **Hill-Climbing** - Local search with multiple random restarts to avoid local optima
 4. **Simulated Annealing** - Probabilistic optimization with temperature scheduling
 5. **Genetic Algorithm (Hybrid)** - Enhanced evolutionary algorithm with genetic operators plus local search optimization for improved solution quality
@@ -23,14 +25,10 @@ The 5-Queens problem is a variant of the famous N-Queens problem where you must 
 pip install simpleai
 ```
 
-Or install from requirements.txt:
-```bash
-pip install -r requirements.txt
-```
-
 ## Usage
 
 Run the interactive solver:
+
 ```bash
 python five_queens_solver.py
 ```
@@ -86,11 +84,13 @@ Conflicts: 0
 ## Implementation Details
 
 ### CSP Formulation
+
 - **Variables**: Queen positions (columns 0-4)
 - **Domain**: Possible rows for each queen (0-4)
 - **Constraints**: No two queens on same row or diagonal
 
 ### Local Search Formulation
+
 - **State**: Tuple representing row position of each queen
 - **Actions**: Move one queen to a different row
 - **Evaluation**: Negative number of conflicts (higher is better)
@@ -98,7 +98,6 @@ Conflicts: 0
 ## Files
 
 - `five_queens_solver.py` - Main solver with interactive menu
-- `requirements.txt` - Python dependencies
 - `README.md` - This documentation file
 
 ## Note
